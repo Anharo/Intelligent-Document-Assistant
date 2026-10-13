@@ -1,15 +1,17 @@
 """
-T16 (part 2): LangGraph state graph.
+LangGraph state graph: router -> path -> generation (T16 + T19).
 
     START -> classify -> (conditional) -> document_rag | sql_query | direct_answer -> END
 
-Week 4 scope: classification + the branch nodes gather their raw material
-(retrieved chunks / SQL rows). Generation (turning that material into a final
-natural-language answer) is Week 5 (T17/T18) and plugs into these same nodes.
+Each branch node does its own retrieval AND generation, so a single
+`run_query(question)` call returns the final answer for any of the three paths.
 
 Heavy imports (embedding model, reranker, Postgres) happen lazily INSIDE the
-nodes, so routing on its own stays fast to import and test.
+nodes, so routing on its own stays fast to import and test. Every branch
+catches its own failures and returns a readable message instead of raising,
+so one flaky dependency can't take the whole demo down.
 """
+import time
 from typing import Any, Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -22,10 +24,11 @@ class QueryState(TypedDict, total=False):
     route: str
     route_reason: str
     chunks: list[dict]          # DOCUMENT_RAG: reranked chunks
+    citations: list[dict]       # DOCUMENT_RAG: chunks the answer cites
     sql: str | None             # SQL_QUERY: generated SQL
     rows: list[dict] | None     # SQL_QUERY: result rows
     error: str | None
-    answer: str                 # filled in by Week 5 generation nodes
+    answer: str
 
 
 def classify_node(state: QueryState) -> dict[str, Any]:
@@ -34,21 +37,43 @@ def classify_node(state: QueryState) -> dict[str, Any]:
 
 
 def document_rag_node(state: QueryState) -> dict[str, Any]:
-    from ida.retrieval.pipeline import retrieve  # lazy: loads models
+    try:
+        from ida.generation.answer import generate_rag_answer  # lazy
+        from ida.retrieval.pipeline import retrieve
 
-    return {"chunks": retrieve(state["question"], top_k=5)}
+        chunks = retrieve(state["question"], top_k=5)
+        result = generate_rag_answer(state["question"], chunks)
+        return {"chunks": chunks, "answer": result["answer"], "citations": result["citations"]}
+    except Exception as e:
+        return {"answer": "Sorry, something went wrong while searching the handbook.", "error": str(e)}
 
 
 def sql_query_node(state: QueryState) -> dict[str, Any]:
-    from ida.retrieval.sql_tool import nl_to_sql_query  # lazy: needs Groq + Postgres
+    try:
+        from ida.generation.answer import explain_sql_result  # lazy
+        from ida.retrieval.sql_tool import nl_to_sql_query
 
-    result = nl_to_sql_query(state["question"])
-    return {"sql": result["sql"], "rows": result["rows"], "error": result["error"]}
+        result = nl_to_sql_query(state["question"])
+        answer = explain_sql_result(
+            state["question"], result["sql"], result["rows"], result["error"]
+        )
+        return {
+            "sql": result["sql"],
+            "rows": result["rows"],
+            "error": result["error"],
+            "answer": answer,
+        }
+    except Exception as e:
+        return {"answer": "Sorry, something went wrong while querying the records.", "error": str(e)}
 
 
 def direct_answer_node(state: QueryState) -> dict[str, Any]:
-    # Week 5: call the LLM directly with no retrieved context.
-    return {}
+    try:
+        from ida.generation.answer import generate_direct_answer  # lazy
+
+        return {"answer": generate_direct_answer(state["question"])}
+    except Exception as e:
+        return {"answer": "Sorry, I couldn't generate a reply just now.", "error": str(e)}
 
 
 def _pick_branch(
@@ -76,8 +101,39 @@ def build_graph():
     return g.compile()
 
 
+_GRAPH = None
+
+
+def get_graph():
+    global _GRAPH
+    if _GRAPH is None:
+        _GRAPH = build_graph()
+    return _GRAPH
+
+
+def run_query(question: str) -> dict:
+    """
+    The one entry point the API, the UI, and the eval harness all call.
+
+    Returns: {question, route, route_reason, answer, citations, sql, rows,
+              error, elapsed_s}
+    """
+    start = time.perf_counter()
+    out = get_graph().invoke({"question": question})
+    return {
+        "question": question,
+        "route": out.get("route"),
+        "route_reason": out.get("route_reason"),
+        "answer": out.get("answer", ""),
+        "citations": out.get("citations", []),
+        "sql": out.get("sql"),
+        "rows": out.get("rows"),
+        "error": out.get("error"),
+        "elapsed_s": round(time.perf_counter() - start, 2),
+    }
+
+
 if __name__ == "__main__":
-    graph = build_graph()
     for q in ["Hello!", "What is FERPA?", "How many students have unpaid fees?"]:
-        out = graph.invoke({"question": q})
-        print(f"{out['route']:<14} {q}")
+        r = run_query(q)
+        print(f"\n[{r['route']}] {q}\n{r['answer']}")

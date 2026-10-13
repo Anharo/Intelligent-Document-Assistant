@@ -15,7 +15,8 @@ import os
 import re
 
 from dotenv import load_dotenv
-from groq import Groq
+
+from ida.generation.llm import chat
 
 load_dotenv()
 
@@ -89,24 +90,26 @@ def _parse(text: str) -> tuple[str, str]:
     return DEFAULT_ROUTE, "(unparseable router output; used default route)"
 
 
-def classify_query(question: str) -> dict:
+def classify_query(question: str, attempts: int = 3) -> dict:
     """
-    Returns {route, reason}. Never raises on model/parse trouble: falls back
-    to DEFAULT_ROUTE so one bad response can't crash the whole /query flow.
-    """
-    try:
-        client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": question},
-            ],
-            max_tokens=600,  # headroom: reasoning models spend tokens before answering
-            temperature=0,
-        )
-        route, reason = _parse(response.choices[0].message.content)
-    except Exception as e:  # network/rate-limit/etc.
-        return {"route": DEFAULT_ROUTE, "reason": f"(router call failed: {e})"}
+    Returns {route, reason}. Never raises on model/parse trouble: after
+    `attempts` tries it falls back to DEFAULT_ROUTE, with the failure recorded
+    in `reason` so it shows up in tests instead of failing silently.
 
-    return {"route": route, "reason": reason}
+    Retries on both call failures AND empty/unparseable output (reasoning
+    models occasionally spend their whole token budget before answering).
+    """
+    last_reason = ""
+    for _ in range(attempts):
+        try:
+            text = chat(SYSTEM_PROMPT, question, max_tokens=600, temperature=0)
+        except Exception as e:  # network / auth / persistent rate-limit
+            last_reason = f"(router call failed: {e})"
+            continue
+
+        route, reason = _parse(text)
+        if not reason.startswith("(unparseable"):
+            return {"route": route, "reason": reason}
+        last_reason = reason
+
+    return {"route": DEFAULT_ROUTE, "reason": last_reason}
