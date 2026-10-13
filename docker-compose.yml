@@ -16,7 +16,7 @@ services:
       POSTGRES_PASSWORD: ida_dev
       POSTGRES_DB: ida_records
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
 

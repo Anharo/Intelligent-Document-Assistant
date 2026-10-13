@@ -20,7 +20,7 @@ def _get_model() -> SentenceTransformer:
  
 @lru_cache(maxsize=1)
 def _get_client() -> QdrantClient:
-    return QdrantClient(url=os.getenv("QDRANT_URL"))
+    return QdrantClient(url=os.getenv("QDRANT_URL"), check_compatibility=False)
  
  
 def dense_retrieve(query: str, top_k: int = 5) -> list[dict]:

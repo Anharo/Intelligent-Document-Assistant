@@ -166,6 +166,13 @@ def main():
         i += 1
     chunks = merged
 
+    # Drop the table of contents: it names every topic in the handbook, so it
+    # matches almost any query (dense, BM25 and the re-ranker all love it) but
+    # never contains an actual answer.
+    before = len(chunks)
+    chunks = [c for c in chunks if "table of contents" not in c["section"].lower()]
+    print(f"Dropped {before - len(chunks)} table-of-contents chunk(s)")
+
     # re-sequence chunk_ids after merging (some indices were consumed above)
     for idx, c in enumerate(chunks, start=1):
         c["chunk_id"] = f"chunk_{idx:04d}"

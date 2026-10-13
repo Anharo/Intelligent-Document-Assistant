@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "groq>=1.7.0",
+    "langgraph>=0.6.0",
     "pandas>=3.0.5",
     "psycopg[binary]>=3.3.5",
     "pymupdf>=1.28.2",
