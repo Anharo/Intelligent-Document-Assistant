@@ -99,13 +99,26 @@ def validate_sql(sql: str) -> None:
         raise UnsafeSQLError("Multiple statements are not allowed.")
 
 
+
 def execute_sql(sql: str) -> list[dict]:
-    dsn = os.getenv("POSTGRES_DSN")
+    """Execute generated SQL using a read-only database account."""
+    dsn = os.getenv("POSTGRES_READONLY_DSN")
+
+    if not dsn:
+        raise RuntimeError("POSTGRES_READONLY_DSN is not configured.")
+
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
+            cur.execute("SET TRANSACTION READ ONLY")
+            cur.execute("SET LOCAL statement_timeout = '10s'")
             cur.execute(sql)
+
+            if cur.description is None:
+                raise UnsafeSQLError("Query did not return a result set.")
+
             columns = [desc[0] for desc in cur.description]
-            rows = cur.fetchall()
+            rows = cur.fetchmany(100)
+
     return [dict(zip(columns, row)) for row in rows]
 
 

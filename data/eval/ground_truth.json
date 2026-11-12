@@ -1,0 +1,50 @@
+
+[
+  {
+    "query": "What rights do students have under FERPA?",
+    "relevant_chunk_ids": [
+      "chunk_0013",
+      "chunk_0014"
+    ]
+  },
+  {
+    "query": "What is the university's alcohol policy on campus?",
+    "relevant_chunk_ids": [
+      "chunk_0033",
+      "chunk_0078"
+    ]
+  },
+  {
+    "query": "What rules apply to alcohol at university student events?",
+    "relevant_chunk_ids": [
+      "chunk_0034",
+      "chunk_0035"
+    ]
+  },
+  {
+    "query": "How do I request a leave of absence?",
+    "relevant_chunk_ids": [
+      "chunk_0051"
+    ]
+  },
+  {
+    "query": "What happens during a Student Judicial Resolution (SJR)?",
+    "relevant_chunk_ids": [
+      "chunk_0134"
+    ]
+  },
+  {
+    "query": "What constitutes cheating under the university's academic standards?",
+    "relevant_chunk_ids": [
+      "chunk_0021",
+      "chunk_0023",
+      "chunk_0082"
+    ]
+  },
+  {
+    "query": "What are the rules about smoking on campus?",
+    "relevant_chunk_ids": [
+      "chunk_0117"
+    ]
+  }
+]
